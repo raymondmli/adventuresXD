@@ -567,9 +567,17 @@ doorsClosing:
 
 	rjmp extINT1End					; ends
 ; If the Open button is held down while the door is open, the door should remain open until the button is released
-; we just sleep since there are no LEDs and no motors running
+; subtracts from tempCounter whilst door is opened
+; does nothing to program if tempCounter < 7812. Else sub 10 from tempCounter
 doorsOpened:
- 	rcall sleep_5ms
+	lds r22, low(tempCounter)
+	lds r23, high(tempCounter)
+	cpi r22, low(7812)
+	cpc r23, high(7812)
+	brlt extINT1End
+	sbiw r23:r22, 10
+	sts tempCounter, r22
+	sts tempCounter + 1, r23
 
 extINT1End:
 	pop direction
