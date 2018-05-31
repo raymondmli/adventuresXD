@@ -15,7 +15,7 @@
 .equ PORTLDIR = 0xF0		; initialising most significant bits of PORT L to output, and least to input. Keypad port
 .equ INITCOLMASK = 0xEF		; to 1111 1110, since we are scanning from rightmost column
 .equ INITROWMASK = 0x01		; to 0000 0001, since we are scanning from top
-.equ ROWMASK = 0x0F			; to 0000 1111, all one's to 'and' with another register
+.equ ROWMASK = 0x0F			; to 0000 1111, all one's to 'and' with input from column wire 
 .equ DOWN = 0x2				; down is signified by 2, while up is 1 and stall is 0
 .equ UP = 0x1
 .equ STALL = 0x0
