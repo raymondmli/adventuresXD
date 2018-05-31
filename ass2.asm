@@ -25,10 +25,10 @@
 .equ YES = 0x1
 .equ NO = 0x0
 .equ LCD_RS = 7				; lcd stuff
-.equ LCD_E = 6				; don't remember
+.equ LCD_E = 6
 .equ LCD_RW = 5
 .equ LCD_BE = 4
-.equ F_CPU = 16000000		; variables for one ms delay
+.equ F_CPU = 16000000		; variables for one ms delay. Don't use them sadly.
 .equ DELAY_1MS = F_CPU / 4 / 1000 - 4
 
 .equ OPENING = 0x1			; elevator door variables
@@ -46,7 +46,7 @@ targetNumInterrupts:    	; How many interrupts do we want - 7812 for 1 sec
 .byte 2
 
 .cseg
-.org 0x0000
+.org 0x0000					; setting up interrupt vectors
 	jmp RESET
 .org INT0addr
     jmp extINT0
@@ -55,7 +55,7 @@ targetNumInterrupts:    	; How many interrupts do we want - 7812 for 1 sec
 .org OVF0addr
     jmp Timer0OVF
 
-.macro do_lcd_command	  	; forgotten how the lcd works
+.macro do_lcd_command
 	ldi r16, @0            	; Load input into r16.
 	rcall lcd_command      	; Call lcd_command
 	rcall lcd_wait         	; Call lcd_wait
@@ -135,39 +135,6 @@ sleep_5ms:
 	rcall sleep_1ms
 	ret
 
-; **************************************************************************
-; This macro should loop through from the start to the destination floor
-; in our list, incrementing or decrementing from floor to floor til destination
-; Used in conjunction with setBit macro
-; Address of destination floor byte stored in yh:yl.
-; temp1 and temp2 will also store the destination floor
-; **************************************************************************
-.macro loopThrough ; @0 - start @1 - destination. Numbers representing their floor
-    ldi yl, low(floors)     ; Load address of start of list to y
-    ldi yh, high(floors)
-    add yl, @0              ; Move the y pointer n(start) places so we get to the starting position
-    ldi temp1, 0
-    adc yh, temp1			; in case of an overflow
-    mov temp1, @0           ; load parameter 0 to temp1 (current floor counter)
-    mov temp2, @1           ; Load the desired number (the floor we want to loop to) to temp2
-
-    cp temp1, temp2			; if floor is below, loop down, else loop up
-    brlt loopUp
-loopDown:
-    cp temp1, temp2         ; Compare temp1 and temp2
-    breq loopThroughEnd     ; If we are 'there' end macro
-    adiw yh:yl, -1          ; Add -1 to the index pointer.
-    dec temp1               ; Add -1 to counter
-    rjmp loop
-loopUp:
-    cp temp1, temp2         ; Compare temp1 and temp2
-    breq loopThroughEnd     ; If we are 'there' end macro
-    adiw yh:yl, 1           ; Add 1 to the index pointer
-    inc temp1               ; Add 1 to counter
-    rjmp loop
-loopThroughEnd:
-    nop                     ; Shinami
-.endmacro
 ; macro to move yh:yl to a particular floor byte
 .macro getBit
     ldi yl, low(floors)     ; Load start of list to y
@@ -179,6 +146,7 @@ loopThroughEnd:
 
 ; **********************************************************************
 ; This macro should count the number floors we need to service
+; Iterates through floor list.
 ; return value - temp2.
 ; **********************************************************************
 .macro countFloors
@@ -214,7 +182,6 @@ exit:
 ; *************************************************************************
 ; This macro should set the bit of the floor that the y pointer is pointing to
 ; y pointer is set to the floor byte of our destination floor
-; EDIT: doesn't require loopThrough, since getBit sets y to the destination floor.
 ; *************************************************************************
 .macro setBit ; We need to service this floor (set it to 1)
     ldi temp1, BOTTOMFLOOR      ; Start from the bottom floor
@@ -226,8 +193,7 @@ exit:
 
 ; **********************************************************************
 ; This macro should clear the bit of the floor that the y pointer is pointing
-; Assumes currPosition is the floor we want to clear, i.e. we've already visited
-; EDIT: doesn't require loopThrough, since getBit sets y to the visited floor.
+; Assumes currPosition is the floor we want to clear, i.e. that we've already visited
 ; **********************************************************************
 .macro clrBit ; Clear the floor (we dont wanna go there)
     ldi temp1, BOTTOMFLOOR      ; Start from the bottom floor
@@ -248,11 +214,11 @@ exit:
     out PORTG, temp1		; clears top 2 LED bar bits
     cpi currPosition, 8     ; If it is floor 8 we have turn on the top two bits of the led bar which is not in PORTC
     breq floor8
-    cpi currPosition, 9     ; If it is floor 9 we have turn on the top two bits of the led bar which is not in PORTC
+    cpi currPosition, 9
     breq floor9
 checkLoop:                  ; This is for floors 0-7
-    cp temp1, currPosition  ; Check if temp1 has reached the floor we are at now
-    breq display            ; If it is then we can display it
+    cp temp1, currPosition  ; Check if temp1 has reached the floor within the loop
+    breq display            ; If it has then we display the pattern
     lsl temp2               ; Otherwise left shift temp2 ie. 0b00000001 becomes 0b00000010
     inc temp2               ; Add 1 so 0b00000010 becomes 0b00000011 this way we turn on the bottomn two lights
     inc temp1
@@ -308,7 +274,7 @@ display:
 ; RUN: mainly setup
 ; initialises stack, sets portL for half output, half input
 ; sets PORTC, PORTG for output
-; sets timer 0A for normal mode, timer 0B is set to a 8-prescale value. timer0OVF enabled
+; sets timer 0A for normal mode, timer 0B is set to 8-prescale value. timer0OVF enabled
 ; PORT E set to output, pull-up resistor is enabled(?) and 0's loaded into E
 ; sets OCR3BL and OCR3BH to 0, TMR3 to phase-correct wgm and for output compare
 ; sets ISC01 in EICRA, which causes INT0 to trigger on falling edge. EDITED HERE TO MAKE INT1 trigger on falling edge.
@@ -391,14 +357,16 @@ main:
 ; **********************************************************************
 ; RUN:
 ; Begins with cmask as 1111 1110 and col == 0
-; Stores cmask in PORTL, which only keep 1110 in least significant bits
+; Stores cmask in PORTL, whose useful part (1110) is kept in its least significant bits
 ; Delay is implemented for debouncing reasons
 ; Loads keypad input from PINL into temp1 and 'ands' with ROWMASK (0000 1111) to figure out if button is pressed
 ; If not, branch to nextCol which lsl's 1111 1110, to become 1101 and goes back to colLoop to try again
-; If yes, br rowLoop which does the same thing. When row is found branches to convert
+; If yes, br rowLoop which does the same thing but with rmask which is 0000 0001.
+; i.e. if the result of and operation == 0xF, then we've got the row
+; When row is found branches to convert
 ; First checks if our input could be 0 or letters. If input is 0, set input to 0. If letters rjmp to main.
 ; else apply the formula and set the corresponding floor byte to 1
-; debouncing at the end: so long as the row is low i.e. the button has not been released or switch is still bouncing
+; debouncing at the end: so long as the row is low
 ; loop until it is not
 ; **********************************************************************
 columnLoop:
@@ -425,6 +393,7 @@ rowLoop:
 	breq nextCol           ; If we have then go to the next column
 	mov temp2, temp1       ; Otherwise move temp1 to temp2
 	and temp2, rmask       ; Use logical and with rmaks
+	cpi temp2, 0xF
 	breq convert           ; If they are equal meaning we have got the row we want then go to convert
 	inc row                ; Otherwise increment row
 	lsl rmask              ; Left shift rmask
@@ -518,7 +487,6 @@ extINT1:
 	push r24
 	push r22
 	push r23
-	push r21
 	push switchCount
 	push direction
 extINT1Body:
@@ -567,21 +535,21 @@ doorsClosing:
 	rjmp extINT1End					; ends
 ; If the Open button is held down while the door is open, the door should remain open until the button is released
 ; subtracts from tempCounter whilst door is opened
-; does nothing to program if tempCounter < 7812. Else sub 10 from tempCounter
+; does nothing to program if tempCounter < 7812. Else sub 15 from tempCounter
+; taking into account: cycles taken to reach this part as well as # interrupts a second caused by holding the button
 doorsOpened:
 	lds r22, low(tempCounter)
 	lds r23, high(tempCounter)
 	cpi r22, low(7812)
 	cpc r23, high(7812)
 	brlt extINT1End
-	sbiw r23:r22, 10
+	sbiw r23:r22, 15
 	sts tempCounter, r22
 	sts tempCounter + 1, r23
 
 extINT1End:
 	pop direction
 	pop switchCount
-	pop r21
 	pop r23
 	pop r22
     pop r24
@@ -727,7 +695,7 @@ end:
     reti
 
 ; **********************************************************************
-; Task: Moves elevator by 1, if there are floors to move to, in it's current direction. Else clears direction.
+; Task: Moves elevator by 1, if there are floors to move to in its current direction. Else clears direction.
 ; Cases:
 ; a) if there are no more floors to visit in current direction then previous direction != current direction
 ; - if direction was previously upward/down, but lookAhead changed it to down/up (respectively)..
