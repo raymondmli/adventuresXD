@@ -15,7 +15,7 @@
 .equ PORTLDIR = 0xF0		; initialising most significant bits of PORT L to output, and least to input. Keypad port
 .equ INITCOLMASK = 0xEF		; to 1111 1110, since we are scanning from rightmost column
 .equ INITROWMASK = 0x01		; to 0000 0001, since we are scanning from top
-.equ ROWMASK = 0x0F			; to 0000 1111, for some later reason
+.equ ROWMASK = 0x0F			; to 0000 1111, all one's to 'and' with another register
 .equ DOWN = 0x2				; down is signified by 2, while up is 1 and stall is 0
 .equ UP = 0x1
 .equ STALL = 0x0
@@ -135,7 +135,6 @@ sleep_5ms:
 	rcall sleep_1ms
 	ret
 
-; why do we have to loop through the floors, one at a time, to achieve this?
 ; **************************************************************************
 ; This macro should loop through from the start to the destination floor
 ; in our list, incrementing or decrementing from floor to floor til destination
@@ -546,8 +545,10 @@ doorsStall:					; does the whole doors opening and closing shtick but immediatel
 ; door should stop closing, and opening and closing shtick should proceed.
 ; We do this by triggering our own opening routine and changing the door state at the end.
 doorsClosing:
-	lds r22, low(7812)
-	lds r23, high(7812)
+	ldi r22, low(7812)
+	ldi r23, high(7812)
+	lds yl, low(tempCounter)
+	lds yh, high(tempCounter)
 	sub r22, low(tempCounter)		; subtracting 1s of interrupts from the amount of time the doors had been closing for
 	sbc r23, high(tempCounter)		; ..since we want tempCounter to count this amount of time for door reopening
 	ldi temp1, r22
