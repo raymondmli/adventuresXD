@@ -15,7 +15,7 @@
 .equ PORTLDIR = 0xF0		; initialising most significant bits of PORT L to output, and least to input. Keypad port
 .equ INITCOLMASK = 0xEF		; to 1111 1110, since we are scanning from rightmost column
 .equ INITROWMASK = 0x01		; to 0000 0001, since we are scanning from top
-.equ ROWMASK = 0x0F			; to 0000 1111, all one's to 'and' with input from column wire 
+.equ ROWMASK = 0x0F			; to 0000 1111, all one's to 'and' with input from column wire
 .equ DOWN = 0x2				; down is signified by 2, while up is 1 and stall is 0
 .equ UP = 0x1
 .equ STALL = 0x0
@@ -504,7 +504,6 @@ return:
     out SREG, temp1
     reti
 ; **********************************************************************
-; NOT SET UP YET IN INTERRUPT VECTORS SO DOES NOTHING
 ; Task: If push button
 ; Remember it takes 128 cycles for door state to be checked again
 ; Lacks debouncing. If we hold whilst doorsClosing, door will be opening forever
@@ -525,7 +524,7 @@ extINT1:
 extINT1Body:
 	clr r24
 	clr r25
-	rcall isStopped
+	rcall checkFloors
 	cpi direction, STALL
 	breq doorsStall
 	cpi doorState, CLOSING
@@ -593,53 +592,13 @@ extINT1End:
     pop temp1
 	out SREG, temp1
  	reti
-; **********************************************************************
-; Helper function for extINT1 to check if elevator had stopped
-; Assumes lift only stops when there are no floors to visit
-; Changes direction to STALL
-; Only tested with extINT1 so direction will not change in program since it is pushed and popped
-; **********************************************************************
-isStopped:
-	in temp1, SREG
-	push temp1
-	push temp2
-	push YH
-	push YL
-	push r25
-	push r24
-	push switchCount
-
-stoppedBody:
-	ldi temp1, direction
-	rcall lookAhead						; if direction has changed, then there are no floors in current direction
-	cpi temp1, direction
-	breq isStoppedEnd					; if direction hasn't changed, then there are floors to visit, so lift hasn't stalled
-
-changed:
-	cpi switchCount, 1					; if one switch has already occurred, then another switch would mean there are no floors to visit
-	breq stopped
-	inc switchCount
-	rjmp stoppedBody
-	ldi direction, STALL
-
-isStoppedEnd:
-	pop switchCount
-    pop r24
- 	pop r25
-    pop YL
-	pop YH
-	pop temp2
-    pop temp1
-    out SREG, temp1
-    ret
-
 
 ; **********************************************************************
 ; Timer0 OVF handler. Set to OVF every 128 microseconds
 ; Every OVF interrupt, checks if targetNumInterrupts/7812 seconds had been reached.
-; if not, store the new time. If yes br timeNow, which means 2 seconds have passed.
+; if not, store the new time. If yes br timeNow, which means seconds have passed.
 ; which also means a new floor had been reached. So we:
-; - reset target time to 2s of interrupts:
+; - reset target time to whatever seconds of interrupts:
 ; - clear lcd display
 ; - store currPosition temp2. adds '0' to make temp2 ascii equivalent and displays temp2 on lcd
 ; - display currPosition on LED bar
